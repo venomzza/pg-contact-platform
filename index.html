@@ -8,11 +8,15 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <meta name="theme-color" content="#0d0f1a" />
   <title>PG Contact Directory</title>
-  <meta name="description" content="PG Contact Directory – Quickly find and contact your PG via call or WhatsApp." />
+  <meta name="description" content="PG Contact Directory – Synced across all your devices via Firebase." />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+
+  <!-- Firebase CDN (compat - no bundler needed) -->
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -31,37 +35,27 @@
       --border:    rgba(108,99,255,0.2);
       --shadow:    0 8px 32px rgba(0,0,0,0.4);
       --glow:      0 0 20px rgba(108,99,255,0.25);
-      --radius-lg: 20px;
-      --radius-md: 14px;
-      --radius-sm: 10px;
     }
 
-    /* ─── Base ────────────────────────────── */
     html { -webkit-text-size-adjust: 100%; }
 
     body {
       font-family: 'Outfit', sans-serif;
       background: var(--bg);
       color: var(--text);
-      min-height: 100vh;
       min-height: 100dvh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 32px 14px env(safe-area-inset-bottom, 80px);
-      padding-bottom: max(80px, env(safe-area-inset-bottom));
+      padding: 32px 14px 80px;
       background-image:
         radial-gradient(ellipse at 20% 20%, rgba(108,99,255,0.12) 0%, transparent 60%),
         radial-gradient(ellipse at 80% 80%, rgba(167,139,250,0.08) 0%, transparent 60%);
       overflow-x: hidden;
     }
 
-    /* ─── Header ─────────────────────────── */
-    header {
-      text-align: center;
-      margin-bottom: 28px;
-      width: 100%;
-    }
+    /* ── Header ── */
+    header { text-align: center; margin-bottom: 28px; width: 100%; }
     .logo {
       width: 52px; height: 52px;
       background: linear-gradient(135deg, var(--accent), var(--accent2));
@@ -71,24 +65,47 @@
       box-shadow: var(--glow);
     }
     header h1 {
-      font-size: clamp(1.5rem, 5vw, 2rem);
-      font-weight: 700;
+      font-size: clamp(1.5rem, 5vw, 2rem); font-weight: 700;
       background: linear-gradient(90deg, var(--accent2), #c4b5fd);
-      -webkit-background-clip: text;
-      -webkit-text-fill-color: transparent;
-      background-clip: text;
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
     }
     header p { color: var(--muted); font-size: 0.9rem; margin-top: 5px; }
 
-    /* ─── Form Card ──────────────────────── */
+    /* Sync Status Badge */
+    .sync-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      font-size: 0.75rem; font-weight: 500;
+      padding: 4px 12px; border-radius: 20px;
+      margin-top: 10px;
+      transition: all 0.3s;
+    }
+    .sync-badge.connecting {
+      background: rgba(251,191,36,0.15); color: #fbbf24;
+      border: 1px solid rgba(251,191,36,0.3);
+    }
+    .sync-badge.connected {
+      background: rgba(37,211,102,0.12); color: #4ade80;
+      border: 1px solid rgba(37,211,102,0.25);
+    }
+    .sync-badge.error {
+      background: rgba(239,68,68,0.12); color: #f87171;
+      border: 1px solid rgba(239,68,68,0.25);
+    }
+    .sync-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: currentColor;
+      animation: pulse 1.5s infinite;
+    }
+    .sync-badge.connected .sync-dot { animation: none; }
+    @keyframes pulse {
+      0%,100% { opacity: 1; } 50% { opacity: 0.3; }
+    }
+
+    /* ── Form Card ── */
     .form-card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      padding: 22px 20px;
-      width: 100%;
-      max-width: 540px;
-      margin-bottom: 28px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 20px; padding: 22px 20px;
+      width: 100%; max-width: 540px; margin-bottom: 28px;
       box-shadow: var(--shadow);
     }
     .form-card h2 {
@@ -103,8 +120,7 @@
     .form-group input,
     .form-group textarea {
       width: 100%; background: var(--card);
-      border: 1px solid var(--border); border-radius: var(--radius-sm);
-      /* 16px prevents iOS zoom on focus */
+      border: 1px solid var(--border); border-radius: 10px;
       padding: 13px 14px; color: var(--text);
       font-family: 'Outfit', sans-serif; font-size: 16px;
       outline: none; transition: border-color 0.2s, box-shadow 0.2s;
@@ -124,55 +140,44 @@
       background: linear-gradient(135deg, var(--accent), var(--accent2));
       color: #fff; font-family: 'Outfit', sans-serif;
       font-size: 1rem; font-weight: 600; border: none;
-      border-radius: var(--radius-md); cursor: pointer;
+      border-radius: 14px; cursor: pointer;
       transition: opacity 0.2s, transform 0.15s;
-      margin-top: 4px;
-      /* Good tap target */
-      min-height: 50px;
-      -webkit-tap-highlight-color: transparent;
+      min-height: 50px; -webkit-tap-highlight-color: transparent;
     }
-    .btn-add:active { opacity: 0.85; transform: scale(0.98); }
+    .btn-add:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-add:not(:disabled):active { opacity: 0.85; transform: scale(0.98); }
 
-    /* ─── Section Title ──────────────────── */
+    /* ── Section Title ── */
     .section-title {
       color: var(--muted); max-width: 540px; width: 100%;
       letter-spacing: 0.5px; text-transform: uppercase;
       font-size: 0.75rem; font-weight: 600; margin-bottom: 12px;
     }
 
-    /* ─── PG List ────────────────────────── */
-    .pg-list {
-      width: 100%; max-width: 540px;
-      display: flex; flex-direction: column; gap: 14px;
-    }
+    /* ── PG List ── */
+    .pg-list { width: 100%; max-width: 540px; display: flex; flex-direction: column; gap: 14px; }
 
-    /* ─── PG Card ────────────────────────── */
+    /* ── PG Card ── */
     .pg-card {
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-lg);
-      padding: 16px 16px 0 16px;
+      background: var(--card); border: 1px solid var(--border);
+      border-radius: 20px; padding: 16px 16px 0 16px;
       box-shadow: var(--shadow);
       transition: background 0.2s, box-shadow 0.2s;
       animation: fadeSlideIn 0.3s ease both;
-      position: relative;
-      overflow: hidden;
+      position: relative; overflow: hidden;
     }
-    .pg-card.contacted {
-      border-color: rgba(37,211,102,0.35);
-    }
+    .pg-card.contacted { border-color: rgba(37,211,102,0.35); }
+
     @keyframes fadeSlideIn {
       from { opacity: 0; transform: translateY(10px); }
       to   { opacity: 1; transform: translateY(0); }
     }
 
-    /* ─── Card Top Row ───────────────────── */
+    /* ── Card Top ── */
     .card-top {
-      display: flex;
-      align-items: flex-start;
-      gap: 12px;
-      padding-bottom: 14px;
-      padding-right: 32px; /* space for delete btn */
+      display: flex; align-items: flex-start;
+      gap: 12px; padding-bottom: 14px;
+      padding-right: 34px;
     }
 
     .pg-avatar {
@@ -199,8 +204,7 @@
     /* Contacted Badge */
     .contacted-badge {
       display: inline-flex; align-items: center; gap: 5px;
-      background: rgba(37,211,102,0.15);
-      color: #4ade80;
+      background: rgba(37,211,102,0.15); color: #4ade80;
       border: 1px solid rgba(37,211,102,0.3);
       border-radius: 20px; padding: 2px 9px;
       font-size: 0.72rem; font-weight: 600;
@@ -212,25 +216,17 @@
       to   { opacity: 1; transform: scale(1); }
     }
 
-    /* ─── Action Buttons ─────────────────── */
-    .pg-actions {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-      flex-shrink: 0;
-    }
+    /* ── Action Buttons ── */
+    .pg-actions { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; }
 
     .action-btn {
-      width: 46px; height: 46px;
-      border-radius: var(--radius-sm);
-      border: none;
+      width: 46px; height: 46px; border-radius: 12px; border: none;
       display: flex; align-items: center; justify-content: center;
       cursor: pointer; font-size: 1.1rem; text-decoration: none;
       transition: transform 0.15s, filter 0.15s;
-      position: relative;
       -webkit-tap-highlight-color: transparent;
     }
-    .action-btn:active { transform: scale(0.9); filter: brightness(0.9); }
+    .action-btn:active { transform: scale(0.9); }
 
     .btn-call {
       background: linear-gradient(135deg, var(--blue), #60a5fa);
@@ -241,11 +237,8 @@
       color: #fff; box-shadow: 0 3px 12px rgba(37,211,102,0.4);
     }
 
-    /* ─── Note Section ───────────────────── */
-    .note-section {
-      border-top: 1px solid var(--border);
-      padding: 12px 0 14px 0;
-    }
+    /* ── Note Section ── */
+    .note-section { border-top: 1px solid var(--border); padding: 12px 0 14px 0; }
     .note-label {
       font-size: 0.73rem; color: var(--muted);
       font-weight: 600; text-transform: uppercase;
@@ -258,22 +251,15 @@
       display: flex; align-items: center; gap: 4px;
       font-family: 'Outfit', sans-serif;
       padding: 4px 8px; border-radius: 6px;
-      transition: background 0.2s;
-      -webkit-tap-highlight-color: transparent;
-      min-height: 32px; /* tap target */
+      min-height: 32px; -webkit-tap-highlight-color: transparent;
     }
     .note-edit-btn:active { background: rgba(108,99,255,0.2); }
-
     .note-text {
       font-size: 0.85rem; color: var(--accent2);
       font-style: italic; line-height: 1.5;
     }
-    .note-empty {
-      font-size: 0.82rem; color: var(--muted);
-      font-style: italic; opacity: 0.55;
-    }
+    .note-empty { font-size: 0.82rem; color: var(--muted); font-style: italic; opacity: 0.55; }
 
-    /* Inline Note Editor */
     .note-editor { display: none; flex-direction: column; gap: 8px; }
     .note-editor.open { display: flex; }
     .note-editor textarea {
@@ -292,27 +278,36 @@
       min-height: 44px; -webkit-tap-highlight-color: transparent;
     }
     .btn-save-note {
-      background: linear-gradient(135deg, var(--accent), var(--accent2));
-      color: #fff;
+      background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff;
     }
-    .btn-cancel-note {
-      background: rgba(255,255,255,0.07); color: var(--muted);
-    }
-    .btn-cancel-note:active { background: rgba(255,255,255,0.12); }
+    .btn-cancel-note { background: rgba(255,255,255,0.07); color: var(--muted); }
 
-    /* ─── Delete Button ──────────────────── */
+    /* ── Delete Button ── */
     .btn-delete {
       position: absolute; top: 12px; right: 12px;
       background: rgba(255,80,80,0.1); color: #ff6b6b;
       border: none; width: 30px; height: 30px;
       border-radius: 8px; cursor: pointer; font-size: 0.78rem;
       display: flex; align-items: center; justify-content: center;
-      transition: background 0.2s;
-      -webkit-tap-highlight-color: transparent;
+      transition: background 0.2s; -webkit-tap-highlight-color: transparent;
     }
     .btn-delete:active { background: rgba(255,80,80,0.3); }
 
-    /* ─── Empty State ────────────────────── */
+    /* ── Loading Spinner ── */
+    .loading-state {
+      text-align: center; color: var(--muted);
+      padding: 40px 20px; width: 100%; max-width: 540px;
+    }
+    .spinner {
+      width: 36px; height: 36px; border-radius: 50%;
+      border: 3px solid rgba(108,99,255,0.2);
+      border-top-color: var(--accent);
+      animation: spin 0.8s linear infinite;
+      margin: 0 auto 14px;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Empty State ── */
     .empty-state {
       text-align: center; color: var(--muted);
       padding: 40px 20px; width: 100%; max-width: 540px;
@@ -320,7 +315,7 @@
     .empty-state i { font-size: 2.2rem; margin-bottom: 12px; opacity: 0.35; display: block; }
     .empty-state p { font-size: 0.92rem; line-height: 1.6; }
 
-    /* ─── Tooltips (desktop only) ─────────── */
+    /* ── Tooltips (desktop only) ── */
     @media (hover: hover) {
       [data-tip] { position: relative; }
       [data-tip]::after {
@@ -333,20 +328,20 @@
         opacity: 0; pointer-events: none; transition: opacity 0.2s;
       }
       [data-tip]:hover::after { opacity: 1; }
-      .action-btn:hover { transform: scale(1.1); filter: brightness(1.12); }
-      .btn-add:hover { opacity: 0.9; transform: translateY(-1px); }
+      .action-btn:hover { transform: scale(1.1); filter: brightness(1.1); }
+      .btn-add:not(:disabled):hover { opacity: 0.9; transform: translateY(-1px); }
     }
 
-    /* ─── Tablet & Desktop ───────────────── */
+    /* ── Tablet & Desktop ── */
     @media (min-width: 540px) {
       body { padding: 40px 20px 80px; }
       .form-card { padding: 28px 30px; }
       .form-group input,
       .form-group textarea,
       .note-editor textarea { font-size: 0.95rem; }
-      .card-top { padding-right: 38px; }
       .pg-actions { flex-direction: row; align-items: center; }
       .pg-avatar { width: 50px; height: 50px; font-size: 1.2rem; }
+      .card-top { padding-right: 40px; }
       header h1 { font-size: 2rem; }
     }
   </style>
@@ -356,7 +351,11 @@
   <header>
     <div class="logo">&#127968;</div>
     <h1>PG Contact Directory</h1>
-    <p>Add PGs and reach them instantly</p>
+    <p>Synced across all your devices</p>
+    <div class="sync-badge connecting" id="sync-badge">
+      <span class="sync-dot"></span>
+      <span id="sync-text">Connecting...</span>
+    </div>
   </header>
 
   <!-- Add Form -->
@@ -370,7 +369,7 @@
     </div>
 
     <div class="form-group">
-      <label for="pg-phone">Phone Number (country code + number, no +) *</label>
+      <label for="pg-phone">Phone Number (with country code, no +) *</label>
       <input type="tel" id="pg-phone" placeholder="e.g. 919876543210"
              inputmode="numeric" autocomplete="tel" />
     </div>
@@ -389,17 +388,40 @@
   <div class="section-title" id="list-header" style="display:none">Saved PG Contacts</div>
   <div class="pg-list" id="pg-list"></div>
 
-  <div class="empty-state" id="empty-state">
+  <!-- Loading State -->
+  <div class="loading-state" id="loading-state">
+    <div class="spinner"></div>
+    <p>Loading contacts...</p>
+  </div>
+
+  <!-- Empty State -->
+  <div class="empty-state" id="empty-state" style="display:none">
     <i class="fa-solid fa-house-circle-xmark"></i>
     <p>No PG contacts yet.<br/>Fill in the form above to add one!</p>
   </div>
 
   <script>
-    const KEY = 'pg_contacts_v1';
-    let contacts = JSON.parse(localStorage.getItem(KEY) || '[]');
+    // ══════════════════════════════════════════════
+    //  🔥 FIREBASE CONFIG
+    // ══════════════════════════════════════════════
+    const firebaseConfig = {
+      apiKey:            "AIzaSyCclEDHK8eJjYxiXWRPr5KKUul82cwpkac",
+      authDomain:        "pg-contact.firebaseapp.com",
+      projectId:         "pg-contact",
+      storageBucket:     "pg-contact.firebasestorage.app",
+      messagingSenderId: "23024332132",
+      appId:             "1:23024332132:web:d146cd5a1785ce59941e71",
+      measurementId:     "G-XKV86GLXJW"
+    };
 
-    function save() { localStorage.setItem(KEY, JSON.stringify(contacts)); }
+    // Init Firebase
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const col = db.collection('pg_contacts');
 
+    // ══════════════════════════════════════════════
+    //  HELPERS
+    // ══════════════════════════════════════════════
     function initials(name) {
       return name.trim().split(/\s+/).map(w => w[0]).slice(0, 2).join('').toUpperCase();
     }
@@ -410,70 +432,55 @@
       return d.innerHTML;
     }
 
-    // ── Mark Contacted when WhatsApp clicked ──
-    function markContacted(idx) {
-      contacts[idx].contacted = true;
-      save();
-      const card = document.getElementById('pg-card-' + idx);
-      if (card) {
-        card.classList.add('contacted');
-        const ba = document.getElementById('badge-area-' + idx);
-        if (ba && !ba.querySelector('.contacted-badge')) {
-          ba.innerHTML = '<span class="contacted-badge"><i class="fa-solid fa-circle-check"></i> Contacted</span>';
-        }
-      }
+    // Sync badge UI
+    function setSyncStatus(status) {
+      const badge = document.getElementById('sync-badge');
+      const text  = document.getElementById('sync-text');
+      badge.className = 'sync-badge ' + status;
+      if (status === 'connected')  { text.textContent = 'Live Sync ON'; }
+      if (status === 'connecting') { text.textContent = 'Connecting...'; }
+      if (status === 'error')      { text.textContent = 'Sync Error'; }
     }
 
-    // ── Note editing ──
-    function openNoteEditor(idx) {
-      document.getElementById('note-display-' + idx).style.display = 'none';
-      const editor = document.getElementById('note-editor-' + idx);
-      editor.classList.add('open');
-      const ta = document.getElementById('note-ta-' + idx);
-      ta.value = contacts[idx].note || '';
-      setTimeout(function() { ta.focus(); }, 50);
-    }
-    function cancelNote(idx) {
-      document.getElementById('note-display-' + idx).style.display = 'block';
-      document.getElementById('note-editor-' + idx).classList.remove('open');
-    }
-    function saveNote(idx) {
-      const ta = document.getElementById('note-ta-' + idx);
-      contacts[idx].note = ta.value.trim();
-      save();
-      const noteContent = document.getElementById('note-content-' + idx);
-      if (contacts[idx].note) {
-        noteContent.innerHTML = '<span class="note-text"><i class="fa-solid fa-note-sticky" style="font-size:0.7rem;margin-right:5px;opacity:0.7"></i>' + escHtml(contacts[idx].note) + '</span>';
-      } else {
-        noteContent.innerHTML = '<span class="note-empty">No note yet. Tap edit to add one.</span>';
+    // ══════════════════════════════════════════════
+    //  REAL-TIME LISTENER — auto updates all devices
+    // ══════════════════════════════════════════════
+    col.orderBy('created_at', 'desc').onSnapshot(
+      function(snapshot) {
+        setSyncStatus('connected');
+        document.getElementById('loading-state').style.display = 'none';
+        renderContacts(snapshot.docs);
+      },
+      function(err) {
+        setSyncStatus('error');
+        document.getElementById('loading-state').style.display = 'none';
+        showToast('Firebase error: ' + err.message, 'error');
       }
-      cancelNote(idx);
-      showToast('Note updated!', 'success');
-    }
+    );
 
-    // ── Render All ──
-    function renderAll() {
+    // ══════════════════════════════════════════════
+    //  RENDER
+    // ══════════════════════════════════════════════
+    function renderContacts(docs) {
       const list   = document.getElementById('pg-list');
       const empty  = document.getElementById('empty-state');
       const header = document.getElementById('list-header');
       list.innerHTML = '';
 
-      if (contacts.length === 0) {
-        empty.style.display = 'block';
+      if (docs.length === 0) {
+        empty.style.display  = 'block';
         header.style.display = 'none';
         return;
       }
-      empty.style.display = 'none';
+      empty.style.display  = 'none';
       header.style.display = 'block';
 
-      contacts.forEach(function(c, idx) {
-        const phone   = sanitizePhone(c.phone);
+      docs.forEach(function(doc) {
+        const c   = doc.data();
+        const id  = doc.id;
+        const phone   = sanitizePhone(c.phone || '');
         const waLink  = 'https://wa.me/' + phone;
         const telLink = 'tel:+' + phone;
-
-        const card = document.createElement('div');
-        card.className = 'pg-card' + (c.contacted ? ' contacted' : '');
-        card.id = 'pg-card-' + idx;
 
         const avatarStyle = c.contacted
           ? 'style="background:linear-gradient(135deg,#25D366,#16a34a);box-shadow:0 3px 10px rgba(37,211,102,0.35)"'
@@ -485,21 +492,25 @@
           ? '<span class="note-text"><i class="fa-solid fa-note-sticky" style="font-size:0.7rem;margin-right:5px;opacity:0.7"></i>' + escHtml(c.note) + '</span>'
           : '<span class="note-empty">No note yet. Tap edit to add one.</span>';
 
+        const card = document.createElement('div');
+        card.className = 'pg-card' + (c.contacted ? ' contacted' : '');
+        card.id = 'pg-card-' + id;
+
         card.innerHTML =
-          '<button class="btn-delete" onclick="deletePG(' + idx + ')" aria-label="Delete"><i class="fa-solid fa-xmark"></i></button>' +
+          '<button class="btn-delete" onclick="deletePG(\'' + id + '\')" aria-label="Delete"><i class="fa-solid fa-xmark"></i></button>' +
 
           '<div class="card-top">' +
             '<div class="pg-avatar" ' + avatarStyle + '>' + initials(c.name) + '</div>' +
             '<div class="pg-info">' +
               '<div class="pg-name">' + escHtml(c.name) + '</div>' +
               '<div class="pg-phone"><i class="fa-solid fa-phone" style="font-size:0.7rem;margin-right:4px;opacity:0.5"></i>' + escHtml(c.phone) + '</div>' +
-              '<div id="badge-area-' + idx + '">' + badgeHtml + '</div>' +
+              '<div id="badge-' + id + '">' + badgeHtml + '</div>' +
             '</div>' +
             '<div class="pg-actions">' +
               '<a href="' + telLink + '" class="action-btn btn-call" data-tip="Call" aria-label="Call">' +
                 '<i class="fa-solid fa-phone"></i>' +
               '</a>' +
-              '<a href="' + waLink + '" target="_blank" rel="noopener noreferrer" class="action-btn btn-whatsapp" data-tip="WhatsApp" aria-label="WhatsApp" onclick="markContacted(' + idx + ')">' +
+              '<a href="' + waLink + '" target="_blank" rel="noopener noreferrer" class="action-btn btn-whatsapp" data-tip="WhatsApp" aria-label="WhatsApp" onclick="markContacted(\'' + id + '\')">' +
                 '<i class="fa-brands fa-whatsapp"></i>' +
               '</a>' +
             '</div>' +
@@ -508,16 +519,16 @@
           '<div class="note-section">' +
             '<div class="note-label">' +
               '<span><i class="fa-solid fa-note-sticky" style="margin-right:5px;opacity:0.6"></i>Special Note</span>' +
-              '<button class="note-edit-btn" onclick="openNoteEditor(' + idx + ')"><i class="fa-solid fa-pen-to-square"></i> Edit</button>' +
+              '<button class="note-edit-btn" onclick="openNoteEditor(\'' + id + '\')"><i class="fa-solid fa-pen-to-square"></i> Edit</button>' +
             '</div>' +
-            '<div id="note-display-' + idx + '">' +
-              '<div id="note-content-' + idx + '">' + noteHtml + '</div>' +
+            '<div id="note-display-' + id + '">' +
+              '<div id="note-content-' + id + '">' + noteHtml + '</div>' +
             '</div>' +
-            '<div class="note-editor" id="note-editor-' + idx + '">' +
-              '<textarea id="note-ta-' + idx + '" placeholder="Add a note about this PG..." inputmode="text"></textarea>' +
+            '<div class="note-editor" id="note-editor-' + id + '">' +
+              '<textarea id="note-ta-' + id + '" placeholder="Add a note..." inputmode="text">' + escHtml(c.note || '') + '</textarea>' +
               '<div class="note-editor-btns">' +
-                '<button class="btn-save-note" onclick="saveNote(' + idx + ')"><i class="fa-solid fa-check"></i> Save</button>' +
-                '<button class="btn-cancel-note" onclick="cancelNote(' + idx + ')">Cancel</button>' +
+                '<button class="btn-save-note" onclick="saveNote(\'' + id + '\')"><i class="fa-solid fa-check"></i> Save</button>' +
+                '<button class="btn-cancel-note" onclick="cancelNote(\'' + id + '\')">Cancel</button>' +
               '</div>' +
             '</div>' +
           '</div>';
@@ -526,14 +537,15 @@
       });
     }
 
-    // ── Add PG ──
+    // ══════════════════════════════════════════════
+    //  ADD PG
+    // ══════════════════════════════════════════════
     function addPG() {
       const name  = document.getElementById('pg-name').value.trim();
       const phone = document.getElementById('pg-phone').value.trim();
       const note  = document.getElementById('pg-note').value.trim();
 
-      if (!name) { shake('pg-name'); showToast('Please enter the PG name!', 'error'); return; }
-
+      if (!name)  { shake('pg-name');  showToast('Please enter the PG name!', 'error'); return; }
       const clean = sanitizePhone(phone);
       if (!clean || !/^\d{7,15}$/.test(clean)) {
         shake('pg-phone');
@@ -541,27 +553,73 @@
         return;
       }
 
-      contacts.unshift({ name, phone: clean, note, contacted: false });
-      save();
-      renderAll();
+      const btn = document.getElementById('btn-add-pg');
+      btn.disabled = true;
+      btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>&nbsp; Saving...';
 
-      document.getElementById('pg-name').value  = '';
-      document.getElementById('pg-phone').value = '';
-      document.getElementById('pg-note').value  = '';
-      document.getElementById('pg-name').blur();
-
-      showToast(name + ' added!', 'success');
+      col.add({
+        name:       name,
+        phone:      clean,
+        note:       note,
+        contacted:  false,
+        created_at: firebase.firestore.FieldValue.serverTimestamp()
+      })
+      .then(function() {
+        document.getElementById('pg-name').value  = '';
+        document.getElementById('pg-phone').value = '';
+        document.getElementById('pg-note').value  = '';
+        document.getElementById('pg-name').blur();
+        showToast(name + ' added!', 'success');
+      })
+      .catch(function(err) { showToast('Error: ' + err.message, 'error'); })
+      .finally(function() {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fa-solid fa-plus"></i>&nbsp; Add PG Contact';
+      });
     }
 
-    // ── Delete ──
-    function deletePG(idx) {
-      const name = contacts[idx].name;
-      contacts.splice(idx, 1);
-      save(); renderAll();
-      showToast(name + ' removed.', 'info');
+    // ══════════════════════════════════════════════
+    //  DELETE PG
+    // ══════════════════════════════════════════════
+    function deletePG(id) {
+      col.doc(id).delete()
+        .then(function() { showToast('Contact removed.', 'info'); })
+        .catch(function(err) { showToast('Error: ' + err.message, 'error'); });
     }
 
-    // ── Shake ──
+    // ══════════════════════════════════════════════
+    //  MARK CONTACTED (WhatsApp clicked)
+    // ══════════════════════════════════════════════
+    function markContacted(id) {
+      col.doc(id).update({ contacted: true })
+        .catch(function(err) { console.error(err); });
+    }
+
+    // ══════════════════════════════════════════════
+    //  NOTE EDITOR
+    // ══════════════════════════════════════════════
+    function openNoteEditor(id) {
+      document.getElementById('note-display-' + id).style.display = 'none';
+      const editor = document.getElementById('note-editor-' + id);
+      editor.classList.add('open');
+      setTimeout(function() {
+        document.getElementById('note-ta-' + id).focus();
+      }, 50);
+    }
+    function cancelNote(id) {
+      document.getElementById('note-display-' + id).style.display = 'block';
+      document.getElementById('note-editor-' + id).classList.remove('open');
+    }
+    function saveNote(id) {
+      const note = document.getElementById('note-ta-' + id).value.trim();
+      col.doc(id).update({ note: note })
+        .then(function() { showToast('Note updated!', 'success'); cancelNote(id); })
+        .catch(function(err) { showToast('Error: ' + err.message, 'error'); });
+    }
+
+    // ══════════════════════════════════════════════
+    //  SHAKE ANIMATION
+    // ══════════════════════════════════════════════
     function shake(id) {
       const el = document.getElementById(id);
       el.style.animation = 'none';
@@ -570,7 +628,9 @@
       el.addEventListener('animationend', function() { el.style.animation = ''; }, { once: true });
     }
 
-    // ── Toast ──
+    // ══════════════════════════════════════════════
+    //  TOAST
+    // ══════════════════════════════════════════════
     function showToast(msg, type) {
       const ex = document.getElementById('_toast');
       if (ex) ex.remove();
@@ -593,8 +653,8 @@
         zIndex:'9999', opacity:'0',
         transition:'opacity 0.3s,transform 0.3s',
         whiteSpace:'nowrap',
-        maxWidth: 'calc(100vw - 40px)',
-        textAlign: 'center'
+        maxWidth:'calc(100vw - 40px)',
+        textAlign:'center'
       });
       document.body.appendChild(t);
       requestAnimationFrame(function() {
@@ -608,17 +668,15 @@
       }, 2600);
     }
 
-    // ── Inject keyframes ──
+    // Inject keyframes
     const s = document.createElement('style');
     s.textContent = '@keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}60%{transform:translateX(-4px)}80%{transform:translateX(4px)}}';
     document.head.appendChild(s);
 
-    // Enter key (not in textarea)
+    // Enter key submit
     document.addEventListener('keydown', function(e) {
       if (e.key === 'Enter' && e.target.tagName !== 'TEXTAREA') addPG();
     });
-
-    renderAll();
   </script>
 </body>
 </html>
