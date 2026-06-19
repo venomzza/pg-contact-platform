@@ -338,6 +338,88 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* ── Duplicate Modal ── */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.65);
+      backdrop-filter: blur(4px);
+      z-index: 10000;
+      display: flex; align-items: center; justify-content: center;
+      padding: 20px;
+      opacity: 0; pointer-events: none;
+      transition: opacity 0.25s;
+    }
+    .modal-overlay.open {
+      opacity: 1; pointer-events: all;
+    }
+    .modal-box {
+      background: var(--surface);
+      border: 1px solid rgba(245,158,11,0.35);
+      border-radius: 20px;
+      padding: 28px 24px;
+      width: 100%; max-width: 380px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(245,158,11,0.1);
+      transform: scale(0.9) translateY(10px);
+      transition: transform 0.25s cubic-bezier(.175,.885,.32,1.275);
+    }
+    .modal-overlay.open .modal-box {
+      transform: scale(1) translateY(0);
+    }
+    .modal-icon {
+      width: 52px; height: 52px;
+      background: rgba(245,158,11,0.15);
+      border: 1px solid rgba(245,158,11,0.3);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.4rem; margin: 0 auto 16px;
+      color: #fbbf24;
+    }
+    .modal-title {
+      font-size: 1.05rem; font-weight: 700;
+      color: var(--text); text-align: center; margin-bottom: 8px;
+    }
+    .modal-msg {
+      font-size: 0.85rem; color: var(--muted);
+      text-align: center; line-height: 1.6; margin-bottom: 20px;
+    }
+    .modal-dup-info {
+      background: rgba(245,158,11,0.08);
+      border: 1px solid rgba(245,158,11,0.2);
+      border-radius: 10px;
+      padding: 10px 14px;
+      margin-bottom: 20px;
+      font-size: 0.82rem;
+      color: #fbbf24;
+    }
+    .modal-dup-info span { color: var(--text); font-weight: 600; }
+    .modal-btns {
+      display: flex; gap: 10px;
+    }
+    .modal-cancel {
+      flex: 1; padding: 12px;
+      background: rgba(255,255,255,0.07);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--muted);
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.9rem; font-weight: 600;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .modal-confirm {
+      flex: 1; padding: 12px;
+      background: linear-gradient(135deg, #f59e0b, #d97706);
+      border: none; border-radius: 12px;
+      color: #fff;
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.9rem; font-weight: 600;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(245,158,11,0.35);
+      -webkit-tap-highlight-color: transparent;
+    }
+    .modal-cancel:active { opacity: 0.7; }
+    .modal-confirm:active { opacity: 0.85; }
+
     /* ── Search Bar ── */
     .search-wrap {
       width: 100%; max-width: 540px;
@@ -787,6 +869,42 @@
         return;
       }
 
+      // ── Duplicate check ──────────────────────────
+      const dupInfos = [];
+      allDocs.forEach(function(d) {
+        const ex = d.data();
+        const exP1 = sanitizePhone(ex.phone  || '');
+        const exP2 = sanitizePhone(ex.phone2 || '');
+        if ((clean  && (clean  === exP1 || clean  === exP2)) ||
+            (clean2 && (clean2 === exP1 || clean2 === exP2))) {
+          dupInfos.push(ex.name);
+        }
+      });
+
+      if (dupInfos.length > 0) {
+        // Show confirmation modal
+        document.getElementById('modal-dup-names').textContent = dupInfos.join(', ');
+        document.getElementById('dup-modal').classList.add('open');
+        // Store pending data on confirm button
+        document.getElementById('modal-confirm-btn').onclick = function() {
+          closeModal();
+          saveContact(name, clean, clean2, note);
+        };
+        return;
+      }
+
+      saveContact(name, clean, clean2, note);
+    }
+
+    function closeModal() {
+      document.getElementById('dup-modal').classList.remove('open');
+    }
+
+    function handleOverlayClick(e) {
+      if (e.target === document.getElementById('dup-modal')) closeModal();
+    }
+
+    function saveContact(name, clean, clean2, note) {
       const btn = document.getElementById('btn-add-pg');
       btn.disabled = true;
       btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>&nbsp; Saving...';
@@ -923,5 +1041,33 @@
       });
     }
   </script>
+  <!-- Duplicate Phone Modal -->
+  <div class="modal-overlay" id="dup-modal" onclick="handleOverlayClick(event)">
+    <div class="modal-box">
+      <div class="modal-icon">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+      </div>
+      <div class="modal-title">Duplicate Number Found!</div>
+      <div class="modal-msg">
+        Ye phone number pehle se ek aur PG mein save hai:
+      </div>
+      <div class="modal-dup-info">
+        ⚠️ Already saved in: <span id="modal-dup-names"></span>
+      </div>
+      <div class="modal-msg" style="margin-bottom:0">
+        Kya aap phir bhi is number ke saath naya PG add karna chahte ho?
+      </div>
+      <br/>
+      <div class="modal-btns">
+        <button class="modal-cancel" onclick="closeModal()">
+          <i class="fa-solid fa-xmark"></i> Cancel
+        </button>
+        <button class="modal-confirm" id="modal-confirm-btn">
+          <i class="fa-solid fa-check"></i> Haan, Add Karo
+        </button>
+      </div>
+    </div>
+  </div>
+
 </body>
 </html>
