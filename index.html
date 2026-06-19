@@ -338,6 +338,87 @@
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
+    /* ── Search Bar ── */
+    .search-wrap {
+      width: 100%; max-width: 540px;
+      position: relative; margin-bottom: 14px;
+    }
+    .search-wrap i {
+      position: absolute; left: 14px; top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted); font-size: 0.9rem; pointer-events: none;
+    }
+    .search-input {
+      width: 100%; background: var(--surface);
+      border: 1px solid var(--border); border-radius: 12px;
+      padding: 12px 14px 12px 40px;
+      color: var(--text); font-family: 'Outfit', sans-serif;
+      font-size: 16px; outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      -webkit-appearance: none;
+    }
+    .search-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(108,99,255,0.15);
+    }
+    .search-input::placeholder { color: var(--muted); opacity: 0.6; }
+    .search-clear {
+      position: absolute; right: 12px; top: 50%;
+      transform: translateY(-50%);
+      background: none; border: none;
+      color: var(--muted); cursor: pointer;
+      font-size: 0.85rem; padding: 4px;
+      display: none;
+    }
+
+    /* ── Tabs ── */
+    .tabs-wrap {
+      width: 100%; max-width: 540px;
+      display: flex; gap: 8px;
+      margin-bottom: 18px;
+    }
+    .tab-btn {
+      flex: 1; padding: 10px 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      color: var(--muted);
+      font-family: 'Outfit', sans-serif;
+      font-size: 0.82rem; font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex; align-items: center;
+      justify-content: center; gap: 6px;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .tab-btn.active {
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      border-color: transparent;
+      color: #fff;
+      box-shadow: 0 4px 14px rgba(108,99,255,0.35);
+    }
+    .tab-btn.tab-pending.active {
+      background: linear-gradient(135deg, #f59e0b, #fbbf24);
+      box-shadow: 0 4px 14px rgba(245,158,11,0.35);
+    }
+    .tab-btn.tab-contacted.active {
+      background: linear-gradient(135deg, #25D366, #16a34a);
+      box-shadow: 0 4px 14px rgba(37,211,102,0.35);
+    }
+    .tab-count {
+      background: rgba(255,255,255,0.2);
+      border-radius: 20px;
+      padding: 1px 7px;
+      font-size: 0.72rem;
+      font-weight: 700;
+      min-width: 20px;
+      text-align: center;
+    }
+    .tab-btn:not(.active) .tab-count {
+      background: rgba(108,99,255,0.15);
+      color: var(--accent2);
+    }
+
     /* ── Empty State ── */
     .empty-state {
       text-align: center; color: var(--muted);
@@ -422,7 +503,34 @@
     </button>
   </div>
 
-  <div class="section-title" id="list-header" style="display:none">Saved PG Contacts</div>
+  <!-- Search Bar -->
+  <div class="search-wrap" id="search-wrap" style="display:none">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <input class="search-input" id="search-input" type="text"
+           placeholder="Search by PG name..."
+           oninput="onSearch(this.value)"
+           autocomplete="off" />
+    <button class="search-clear" id="search-clear" onclick="clearSearch()" aria-label="Clear">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs-wrap" id="tabs-wrap" style="display:none">
+    <button class="tab-btn tab-all active" id="tab-all" onclick="setTab('all')">
+      <i class="fa-solid fa-list"></i> All
+      <span class="tab-count" id="count-all">0</span>
+    </button>
+    <button class="tab-btn tab-pending" id="tab-pending" onclick="setTab('pending')">
+      <i class="fa-solid fa-clock"></i> Pending
+      <span class="tab-count" id="count-pending">0</span>
+    </button>
+    <button class="tab-btn tab-contacted" id="tab-contacted" onclick="setTab('contacted')">
+      <i class="fa-solid fa-circle-check"></i> Contacted
+      <span class="tab-count" id="count-contacted">0</span>
+    </button>
+  </div>
+
   <div class="pg-list" id="pg-list"></div>
 
   <!-- Loading State -->
@@ -480,13 +588,27 @@
     }
 
     // ══════════════════════════════════════════════
+    //  STATE
+    // ══════════════════════════════════════════════
+    let allDocs     = [];
+    let activeTab   = 'all';
+    let searchQuery = '';
+
+    // ══════════════════════════════════════════════
     //  REAL-TIME LISTENER — auto updates all devices
     // ══════════════════════════════════════════════
     col.orderBy('created_at', 'desc').onSnapshot(
       function(snapshot) {
         setSyncStatus('connected');
         document.getElementById('loading-state').style.display = 'none';
-        renderContacts(snapshot.docs);
+        allDocs = snapshot.docs;
+        updateTabCounts();
+        applyFilter();
+        // Show search + tabs once data loads
+        if (allDocs.length > 0) {
+          document.getElementById('search-wrap').style.display = 'block';
+          document.getElementById('tabs-wrap').style.display   = 'flex';
+        }
       },
       function(err) {
         setSyncStatus('error');
@@ -496,21 +618,70 @@
     );
 
     // ══════════════════════════════════════════════
+    //  TAB + SEARCH LOGIC
+    // ══════════════════════════════════════════════
+    function setTab(tab) {
+      activeTab = tab;
+      ['all','pending','contacted'].forEach(function(t) {
+        document.getElementById('tab-' + t).classList.toggle('active', t === tab);
+      });
+      applyFilter();
+    }
+
+    function onSearch(val) {
+      searchQuery = val.trim().toLowerCase();
+      document.getElementById('search-clear').style.display = searchQuery ? 'block' : 'none';
+      applyFilter();
+    }
+
+    function clearSearch() {
+      document.getElementById('search-input').value = '';
+      document.getElementById('search-clear').style.display = 'none';
+      searchQuery = '';
+      applyFilter();
+    }
+
+    function updateTabCounts() {
+      const total     = allDocs.length;
+      const contacted = allDocs.filter(function(d) { return d.data().contacted; }).length;
+      const pending   = total - contacted;
+      document.getElementById('count-all').textContent       = total;
+      document.getElementById('count-pending').textContent   = pending;
+      document.getElementById('count-contacted').textContent = contacted;
+    }
+
+    function applyFilter() {
+      let filtered = allDocs.filter(function(d) {
+        const c = d.data();
+        // Tab filter
+        if (activeTab === 'pending'   && c.contacted)  return false;
+        if (activeTab === 'contacted' && !c.contacted) return false;
+        // Search filter
+        if (searchQuery && !c.name.toLowerCase().includes(searchQuery)) return false;
+        return true;
+      });
+      renderContacts(filtered);
+    }
+
+    // ══════════════════════════════════════════════
     //  RENDER
     // ══════════════════════════════════════════════
     function renderContacts(docs) {
-      const list   = document.getElementById('pg-list');
-      const empty  = document.getElementById('empty-state');
-      const header = document.getElementById('list-header');
+      const list  = document.getElementById('pg-list');
+      const empty = document.getElementById('empty-state');
       list.innerHTML = '';
 
       if (docs.length === 0) {
-        empty.style.display  = 'block';
-        header.style.display = 'none';
+        const msg = searchQuery
+          ? 'No PG found for "' + searchQuery + '"'
+          : (activeTab === 'pending'   ? 'Koi pending contact nahi!' :
+             activeTab === 'contacted' ? 'Abhi kisi ko contact nahi kiya!' :
+             'Koi PG nahi hai. Form se add karo!');
+        empty.innerHTML = '<i class="fa-solid fa-house-circle-xmark"></i><p>' + msg + '</p>';
+        empty.style.display = 'block';
         return;
       }
-      empty.style.display  = 'none';
-      header.style.display = 'block';
+      empty.style.display = 'none';
 
       docs.forEach(function(doc) {
         const c   = doc.data();
