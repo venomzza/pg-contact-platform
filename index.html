@@ -20,6 +20,7 @@
   <!-- Firebase CDN (compat - no bundler needed) -->
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -500,7 +501,6 @@
       background: rgba(108,99,255,0.15);
       color: var(--accent2);
     }
-
     /* ── Empty State ── */
     .empty-state {
       text-align: center; color: var(--muted);
@@ -526,6 +526,49 @@
       .btn-add:not(:disabled):hover { opacity: 0.9; transform: translateY(-1px); }
     }
 
+    /* ── Login Overlay ── */
+    #login-overlay {
+      position: fixed; inset: 0;
+      background: var(--bg);
+      z-index: 20000;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 20px;
+    }
+    .login-box {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 20px; padding: 32px 24px;
+      width: 100%; max-width: 400px;
+      box-shadow: var(--shadow); text-align: center;
+    }
+    .login-box h2 {
+      font-size: 1.5rem; color: var(--accent2); margin-bottom: 24px;
+    }
+    .login-box input {
+      width: 100%; background: var(--card);
+      border: 1px solid var(--border); border-radius: 12px;
+      padding: 14px; margin-bottom: 16px; color: var(--text);
+      font-family: 'Outfit', sans-serif; font-size: 16px;
+      outline: none; transition: border-color 0.2s;
+    }
+    .login-box input:focus { border-color: var(--accent); }
+    .btn-login {
+      width: 100%; padding: 14px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff; font-family: 'Outfit', sans-serif;
+      font-size: 1rem; font-weight: 600; border: none;
+      border-radius: 12px; cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn-login:active { opacity: 0.8; }
+    .btn-logout {
+      position: absolute; top: 16px; right: 16px;
+      background: rgba(255,80,80,0.1); color: #ff6b6b;
+      border: 1px solid rgba(255,80,80,0.2);
+      padding: 6px 12px; border-radius: 8px;
+      font-size: 0.8rem; font-family: 'Outfit', sans-serif;
+      cursor: pointer; z-index: 100; display: none;
+    }
+
     /* ── Tablet & Desktop ── */
     @media (min-width: 540px) {
       body { padding: 40px 20px 80px; }
@@ -541,6 +584,19 @@
   </style>
 </head>
 <body>
+
+  <!-- Login Overlay -->
+  <div id="login-overlay">
+    <div class="login-box">
+      <div class="logo" style="margin: 0 auto 16px;">&#127968;</div>
+      <h2>Secure Access</h2>
+      <input type="email" id="login-email" placeholder="Email" value="venomz@pgdirectory.com" />
+      <input type="password" id="login-pwd" placeholder="Password" value="pgdirectory" />
+      <button class="btn-login" id="btn-login" onclick="handleLogin()">Login / Register</button>
+    </div>
+  </div>
+
+  <button class="btn-logout" id="btn-logout" onclick="handleLogout()">Logout</button>
 
   <header>
     <div class="logo">&#127968;</div>
@@ -645,6 +701,61 @@
     firebase.initializeApp(firebaseConfig);
     const db = firebase.firestore();
     const col = db.collection('pg_contacts');
+    const auth = firebase.auth();
+
+    // ══════════════════════════════════════════════
+    //  AUTH LOGIC
+    // ══════════════════════════════════════════════
+    let unsubscribeSnapshot = null;
+
+    auth.onAuthStateChanged(function(user) {
+      if (user) {
+        document.getElementById('login-overlay').style.display = 'none';
+        document.getElementById('btn-logout').style.display = 'block';
+        startRealtimeListener();
+      } else {
+        document.getElementById('login-overlay').style.display = 'flex';
+        document.getElementById('btn-logout').style.display = 'none';
+        if (unsubscribeSnapshot) {
+          unsubscribeSnapshot();
+          unsubscribeSnapshot = null;
+        }
+      }
+    });
+
+    function handleLogin() {
+      const email = document.getElementById('login-email').value.trim();
+      const pwd   = document.getElementById('login-pwd').value.trim();
+      const btn   = document.getElementById('btn-login');
+
+      if (!email || !pwd) return showToast('Please enter email & password', 'error');
+
+      btn.disabled = true;
+      btn.textContent = 'Authenticating...';
+
+      auth.signInWithEmailAndPassword(email, pwd)
+        .then(() => {
+          showToast('Login successful!', 'success');
+        })
+        .catch((error) => {
+          // If user doesn't exist, try creating it (Sign Up)
+          if (error.code === 'auth/user-not-found' || error.code === 'auth/invalid-credential') {
+            btn.textContent = 'Registering...';
+            auth.createUserWithEmailAndPassword(email, pwd)
+              .then(() => showToast('Account created & logged in!', 'success'))
+              .catch((err) => showToast('Auth Error: ' + err.message, 'error'))
+              .finally(() => btn.disabled = false);
+          } else {
+            showToast('Auth Error: ' + error.message, 'error');
+            btn.disabled = false;
+            btn.textContent = 'Login / Register';
+          }
+        });
+    }
+
+    function handleLogout() {
+      auth.signOut().then(() => showToast('Logged out', 'info'));
+    }
 
     // ══════════════════════════════════════════════
     //  HELPERS
@@ -679,25 +790,26 @@
     // ══════════════════════════════════════════════
     //  REAL-TIME LISTENER — auto updates all devices
     // ══════════════════════════════════════════════
-    col.orderBy('created_at', 'desc').onSnapshot(
-      function(snapshot) {
-        setSyncStatus('connected');
-        document.getElementById('loading-state').style.display = 'none';
-        allDocs = snapshot.docs;
-        updateTabCounts();
-        applyFilter();
-        // Show search + tabs once data loads
-        if (allDocs.length > 0) {
-          document.getElementById('search-wrap').style.display = 'block';
-          document.getElementById('tabs-wrap').style.display   = 'flex';
+    function startRealtimeListener() {
+      unsubscribeSnapshot = col.orderBy('created_at', 'desc').onSnapshot(
+        function(snapshot) {
+          setSyncStatus('connected');
+          document.getElementById('loading-state').style.display = 'none';
+          allDocs = snapshot.docs;
+          updateTabCounts();
+          applyFilter();
+          if (allDocs.length > 0) {
+            document.getElementById('search-wrap').style.display = 'block';
+            document.getElementById('tabs-wrap').style.display   = 'flex';
+          }
+        },
+        function(err) {
+          setSyncStatus('error');
+          document.getElementById('loading-state').style.display = 'none';
+          showToast('Firebase error: ' + err.message, 'error');
         }
-      },
-      function(err) {
-        setSyncStatus('error');
-        document.getElementById('loading-state').style.display = 'none';
-        showToast('Firebase error: ' + err.message, 'error');
-      }
-    );
+      );
+    }
 
     // ══════════════════════════════════════════════
     //  TAB + SEARCH LOGIC
